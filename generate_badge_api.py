@@ -1,10 +1,9 @@
-
 from fastapi import FastAPI
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
-import requests
-import io
 import base64
+import io
+import requests
 
 app = FastAPI()
 
@@ -14,27 +13,36 @@ class BadgeRequest(BaseModel):
     photo_url: str
 
 @app.post("/generate_badge")
-def generate_badge(data: BadgeRequest):
-    # 1. 加载背景图（请替换为你自己的背景图路径）
-    bg = Image.open("badge_template.jpg").convert("RGBA")
+async def generate_badge(data: BadgeRequest):
+    # 创建空白工牌背景
+    width, height = 400, 200
+    badge = Image.new("RGB", (width, height), color=(255, 255, 255))
+    draw = ImageDraw.Draw(badge)
 
-    # 2. 下载头像
-    response = requests.get(data.photo_url)
-    avatar = Image.open(io.BytesIO(response.content)).resize((160, 200))
+    # 加载字体（如果部署到云端无法用本地字体，可略过字体）
+    try:
+        font = ImageFont.truetype("arial.ttf", size=20)
+    except:
+        font = ImageFont.load_default()
 
-    # 3. 合成图像
-    bg.paste(avatar, (100, 100))  # 根据你的模板调整位置
-    draw = ImageDraw.Draw(bg)
-    font = ImageFont.truetype("arial.ttf", 30)
-    draw.text((100, 320), f"姓名：{data.name}", font=font, fill="black")
-    draw.text((100, 360), f"工号：{data.employee_id}", font=font, fill="black")
+    # 写入姓名和工号
+    draw.text((150, 30), f"Name: {data.name}", fill=(0, 0, 0), font=font)
+    draw.text((150, 70), f"ID: {data.employee_id}", fill=(0, 0, 0), font=font)
 
-    # 4. 转为 base64 图像
-    buffer = io.BytesIO()
-    bg.save(buffer, format="PNG")
-    base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    # 下载头像
+    try:
+        response = requests.get(data.photo_url)
+        photo = Image.open(io.BytesIO(response.content)).resize((100, 100))
+        badge.paste(photo, (30, 50))
+    except Exception as e:
+        print("Error downloading or pasting photo:", e)
+
+    # 转为 base64
+    buffered = io.BytesIO()
+    badge.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     return {
-        "status": "ok",
-        "image_base64": f"data:image/png;base64,{base64_img}"
+        "status": "success",
+        "image_base64": img_str
     }
